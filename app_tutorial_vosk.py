@@ -22,6 +22,8 @@ BS = '\x08'
 
 TRANSCRIPTION_DIR = "transcriptions"
 
+ttext = ""
+
 
 def store_transcription(caller, text):
     with open(os.path.join(TRANSCRIPTION_DIR, caller + ".txt"), "w") as file:
@@ -51,11 +53,16 @@ def voice():
 @app.route("/playback", methods=['GET', 'POST'])
 def playback():
     """Generate response with the transcribed text."""
+
+    global ttext
+
     print("**************************")
     response = VoiceResponse()
     transcribed = retrieve_transcription("temp")
     print("saying...", transcribed)
-    response.say(transcribed or "Sorry, I couldn't understand that.")
+    print("TTEXT: ", ttext)
+    # response.say(transcribed or "Sorry, I couldn't understand that.")
+    response.say(ttext or "Sorry, I couldn't understand that.")
     return str(response)
 
 @app.route('/call', methods=['POST'])
@@ -81,6 +88,7 @@ def call():
 @sock.route('/stream')
 def stream(ws):
     """Receive and transcribe audio stream."""
+    global ttext
 
     rec = vosk.KaldiRecognizer(model, 16000)
 
@@ -102,12 +110,14 @@ def stream(ws):
                 r = json.loads(rec.Result())
                 if (len(r['text']) > 1):
                     print(CL + r['text'] + ' ', end='', flush=True)
-                    store_transcription("temp", r['text'])
+                    # store_transcription("temp", r['text'])
+                    ttext = r['text']
             else:
                 r = json.loads(rec.PartialResult())
                 if (len(r['partial']) > 1):
                     print(CL + r['partial'] + BS * len(r['partial']), end='', flush=True)
-                    store_transcription("temp", r['partial'])
+                    # store_transcription("temp", r['partial'])
+                    ttext = r['partial']
 
 
 
