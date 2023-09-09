@@ -11,8 +11,8 @@ import vosk
 app = Flask(__name__)
 sock = Sock(app)
 
-account_sid = 'AC5e69a82ff2fcd6e939928a173c9baf3d'
-auth_token = '7291ec85c150b95270f58596c3d01267'
+account_sid = ''
+auth_token = ''
 twilio_client = Client(account_sid, auth_token)
 model = vosk.Model('model')
 
