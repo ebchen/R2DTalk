@@ -19,23 +19,40 @@ model = vosk.Model('model')
 CL = '\x1b[0K'
 BS = '\x08'
 
+transcribed_text = ""
 
 @app.route('/call', methods=['POST'])
 def call():
     """Accept a phone call."""
+    global transcribed_text
     response = VoiceResponse()
+
+    # Start the streaming
     start = Start()
     start.stream(url=f'wss://{request.host}/stream')
     response.append(start)
+
+    # Play your greeting
     response.play('https://audio.jukehost.co.uk/W9WoQPsIRF4BPOLNoU7b2RrqUrWaDHCh')
-    response.pause(length=10)
+
+    # Add a pause
+    response.pause(length=5)
+
+    if transcribed_text:
+        response.say(transcribed_text)
+    else:
+        response.say("Sorry, I couldn't transcribe your message.")
+
     print(f'Incoming call from {request.form["From"]}')
     return str(response), 200, {'Content-Type': 'text/xml'}
+
+
 
 
 @sock.route('/stream')
 def stream(ws):
     """Receive and transcribe audio stream."""
+    global transcribed_text
     rec = vosk.KaldiRecognizer(model, 16000)
     while True:
         message = ws.receive()
@@ -50,9 +67,11 @@ def stream(ws):
             audio = audioop.ratecv(audio, 2, 1, 8000, 16000, None)[0]
             if rec.AcceptWaveform(audio):
                 r = json.loads(rec.Result())
+                transcribed_text = CL + r['text'] + ' '
                 print(CL + r['text'] + ' ', end='', flush=True)
             else:
                 r = json.loads(rec.PartialResult())
+                transcribed_text = CL + r['partial'] + BS * len(r['partial'])
                 print(CL + r['partial'] + BS * len(r['partial']), end='', flush=True)
 
 
