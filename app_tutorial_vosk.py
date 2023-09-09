@@ -2,59 +2,92 @@ import audioop
 import base64
 import json
 import os
-from flask import Flask, request
+from flask import Flask, request, session
 from flask_sock import Sock, ConnectionClosed
 from twilio.twiml.voice_response import VoiceResponse, Start
 from twilio.rest import Client
 import vosk
+import time
 
 app = Flask(__name__)
 sock = Sock(app)
-
-account_sid = ''
-auth_token = ''
+account_sid = 'AC5e69a82ff2fcd6e939928a173c9baf3d'
+auth_token = '0c34a01816e0ef3c226e2c67c2fbb8f1'
 twilio_client = Client(account_sid, auth_token)
 model = vosk.Model('model')
 
 CL = '\x1b[0K'
 BS = '\x08'
 
-transcribed_text = ""
+
+TRANSCRIPTION_DIR = "transcriptions"
+
+
+def store_transcription(caller, text):
+    with open(os.path.join(TRANSCRIPTION_DIR, caller + ".txt"), "w") as file:
+        if (len(text) > 4):
+            print("writing...", text)
+        file.write(text)
+
+
+
+def retrieve_transcription(caller):
+    try:
+        with open(os.path.join(TRANSCRIPTION_DIR, caller + ".txt"), "r") as file:
+            return file.read()
+    except FileNotFoundError:
+        return None
+
+#Route to first run call route and then playback route
+@app.route("/voice", methods=['GET', 'POST'])
+def voice():
+    """Respond to incoming phone calls"""
+    response = VoiceResponse()
+    response.redirect(url='/call')
+
+    return str(response)
+
+#Route to output the transcribed text
+@app.route("/playback", methods=['GET', 'POST'])
+def playback():
+    """Generate response with the transcribed text."""
+    print("**************************")
+    response = VoiceResponse()
+    transcribed = retrieve_transcription("temp")
+    print("saying...", transcribed)
+    response.say(transcribed or "Sorry, I couldn't understand that.")
+    return str(response)
 
 @app.route('/call', methods=['POST'])
 def call():
     """Accept a phone call."""
-    global transcribed_text
-    response = VoiceResponse()
-
-    # Start the streaming
     start = Start()
     start.stream(url=f'wss://{request.host}/stream')
+
+
+
+    response = VoiceResponse()
+
+
     response.append(start)
-
-    # Play your greeting
     response.play('https://audio.jukehost.co.uk/W9WoQPsIRF4BPOLNoU7b2RrqUrWaDHCh')
-
-    # Add a pause
-    response.pause(length=5)
-
-    if transcribed_text:
-        response.say(transcribed_text)
-    else:
-        response.say("Sorry, I couldn't transcribe your message.")
+    response.pause(length=6)
+    response.redirect(url='/playback')
 
     print(f'Incoming call from {request.form["From"]}')
     return str(response), 200, {'Content-Type': 'text/xml'}
 
 
-
-
 @sock.route('/stream')
 def stream(ws):
     """Receive and transcribe audio stream."""
-    global transcribed_text
+
     rec = vosk.KaldiRecognizer(model, 16000)
-    while True:
+
+    iterations = 0
+    while iterations < 10000000000:
+        iterations+=1
+        print(iterations)
         message = ws.receive()
         packet = json.loads(message)
         if packet['event'] == 'start':
@@ -67,12 +100,15 @@ def stream(ws):
             audio = audioop.ratecv(audio, 2, 1, 8000, 16000, None)[0]
             if rec.AcceptWaveform(audio):
                 r = json.loads(rec.Result())
-                transcribed_text = CL + r['text'] + ' '
-                print(CL + r['text'] + ' ', end='', flush=True)
+                if (len(r['text']) > 1):
+                    print(CL + r['text'] + ' ', end='', flush=True)
+                    store_transcription("temp", r['text'])
             else:
                 r = json.loads(rec.PartialResult())
-                transcribed_text = CL + r['partial'] + BS * len(r['partial'])
-                print(CL + r['partial'] + BS * len(r['partial']), end='', flush=True)
+                if (len(r['partial']) > 1):
+                    print(CL + r['partial'] + BS * len(r['partial']), end='', flush=True)
+                    store_transcription("temp", r['partial'])
+
 
 
 if __name__ == '__main__':
@@ -80,7 +116,7 @@ if __name__ == '__main__':
     port = 5000
     public_url = ngrok.connect(port, bind_tls=True).public_url
     number = twilio_client.incoming_phone_numbers.list()[0]
-    number.update(voice_url=public_url + '/call')
+    number.update(voice_url=public_url + '/voice')
     print(f'Waiting for calls on {number.phone_number}')
 
     app.run(port=port)
