@@ -13,8 +13,8 @@ import socket
 # app_tutorial_vosk.py
 app = Flask(__name__)
 sock = Sock(app)
-account_sid = 'AC5e69a82ff2fcd6e939928a173c9baf3d'
-auth_token = '0c34a01816e0ef3c226e2c67c2fbb8f1'
+account_sid = ''
+auth_token = ''
 twilio_client = Client(account_sid, auth_token)
 model = vosk.Model('model')
 
