@@ -8,7 +8,9 @@ from twilio.twiml.voice_response import VoiceResponse, Start
 from twilio.rest import Client
 import vosk
 import time
+import socket
 
+# app_tutorial_vosk.py
 app = Flask(__name__)
 sock = Sock(app)
 account_sid = 'AC5e69a82ff2fcd6e939928a173c9baf3d'
@@ -19,24 +21,40 @@ model = vosk.Model('model')
 CL = '\x1b[0K'
 BS = '\x08'
 
-
 TRANSCRIPTION_DIR = "transcriptions"
-
-ttext = ""
-
 
 def store_transcription(caller, text):
     with open(os.path.join(TRANSCRIPTION_DIR, caller + ".txt"), "w") as file:
-        if (len(text) > 4):
+        textArray = text.split(" ")
+        if (len(textArray) >= 5 and "thank you" in text):
+            if "Response: " in text:
+                text = text.split("Response: ")[1]
             print("writing...", text)
-        file.write(text)
+            file.write(text)
+
 
 
 
 def retrieve_transcription(caller):
+    time.sleep(6)
     try:
-        with open(os.path.join(TRANSCRIPTION_DIR, caller + ".txt"), "r") as file:
-            return file.read()
+        # with open(os.path.join(TRANSCRIPTION_DIR, caller + ".txt"), "r") as file:
+        #     return file.read()
+        # found_keyword = False
+        # content = ""
+        # while not found_keyword:
+        #     with open("transcriptions/business.txt", 'r') as file:
+        #         content = file.read()
+        #         if "!!!!!" in content:
+        #             found_keyword = True
+        with open("transcriptions/business.txt", 'r') as file:
+            lines = file.readlines()
+
+        last_line = lines[-1]
+        if "Response: " in last_line:
+            last_line = last_line.split("Response: ")[1]
+                    # open("transcriptions/business.txt", 'w')
+        return last_line
     except FileNotFoundError:
         return None
 
@@ -44,7 +62,9 @@ def retrieve_transcription(caller):
 @app.route("/voice", methods=['GET', 'POST'])
 def voice():
     """Respond to incoming phone calls"""
+    print("voice")
     response = VoiceResponse()
+    response.play('https://audio.jukehost.co.uk/JK5gyBq7qNDgl9VdBfRucyy1YURdch1t')
     response.redirect(url='/call')
 
     return str(response)
@@ -54,15 +74,15 @@ def voice():
 def playback():
     """Generate response with the transcribed text."""
 
-    global ttext
-
     print("**************************")
     response = VoiceResponse()
-    transcribed = retrieve_transcription("temp")
+    transcribed = retrieve_transcription("business")
+    # with open("transcriptions/business.txt", 'w') as file:
+    #     file.write("")
     print("saying...", transcribed)
-    print("TTEXT: ", ttext)
-    # response.say(transcribed or "Sorry, I couldn't understand that.")
-    response.say(ttext or "Sorry, I couldn't understand that.")
+    response.say(transcribed or "Sorry, I couldn't understand that.", voice='Google.en-US-Neural2-C')
+    response.redirect(url='/call')
+
     return str(response)
 
 @app.route('/call', methods=['POST'])
@@ -71,13 +91,10 @@ def call():
     start = Start()
     start.stream(url=f'wss://{request.host}/stream')
 
-
-
     response = VoiceResponse()
 
 
     response.append(start)
-    response.play('https://audio.jukehost.co.uk/W9WoQPsIRF4BPOLNoU7b2RrqUrWaDHCh')
     response.pause(length=6)
     response.redirect(url='/playback')
 
@@ -88,14 +105,14 @@ def call():
 @sock.route('/stream')
 def stream(ws):
     """Receive and transcribe audio stream."""
-    global ttext
 
     rec = vosk.KaldiRecognizer(model, 16000)
 
     iterations = 0
     while iterations < 10000000000:
         iterations+=1
-        print(iterations)
+        # if iterations % 10 == 0:
+        #     print(iterations)
         message = ws.receive()
         packet = json.loads(message)
         if packet['event'] == 'start':
@@ -110,14 +127,12 @@ def stream(ws):
                 r = json.loads(rec.Result())
                 if (len(r['text']) > 1):
                     print(CL + r['text'] + ' ', end='', flush=True)
-                    # store_transcription("temp", r['text'])
-                    ttext = r['text']
+                    store_transcription("customer", r['text'])
             else:
                 r = json.loads(rec.PartialResult())
                 if (len(r['partial']) > 1):
                     print(CL + r['partial'] + BS * len(r['partial']), end='', flush=True)
-                    # store_transcription("temp", r['partial'])
-                    ttext = r['partial']
+                    store_transcription("customer", r['partial'])
 
 
 
@@ -130,3 +145,5 @@ if __name__ == '__main__':
     print(f'Waiting for calls on {number.phone_number}')
 
     app.run(port=port)
+
+
